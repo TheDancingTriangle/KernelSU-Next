@@ -196,3 +196,29 @@ long ksu_strncpy_from_user_retry(char *dst, const void __user *unsafe_addr,
 
 	return strncpy_from_user(dst, unsafe_addr, count);
 }
+
+long ksu_copy_from_user_nofault(void *dst, const void __user *src, size_t size)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
+    return copy_from_user_nofault(dst, src, size);
+#else
+	// https://elixir.bootlin.com/linux/v5.8/source/mm/maccess.c#L205
+	long ret = -EFAULT;
+	mm_segment_t old_fs = get_fs();
+
+	set_fs(USER_DS);
+
+	// normally theres an access_ok check here
+	// but for what we use it, it will always be true.
+	// so we skip it
+	pagefault_disable();
+	ret = __copy_from_user_inatomic(dst, src, size);
+	pagefault_enable();
+
+	set_fs(old_fs);
+
+	if (ret)
+		return -EFAULT;
+	return 0;
+}
+#endif
